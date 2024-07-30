@@ -14,6 +14,7 @@ export default async function handler(req, res) {
 
     try {
         const db = (await connectDB).db('test'); // DB 접속
+        console.log("DB connection successful");
         let result = await db.collection('test').find().toArray(); // 모든 데이터 가져오기
  
         // 유사도 계산
@@ -45,7 +46,7 @@ export default async function handler(req, res) {
             };
         });
 
-        // 유사도가 10% 이상인 항목들 중에서 가장 높은 유사도를 가진 항목 찾기
+        // 유사도가 50% 이상인 항목들 중에서 가장 높은 유사도를 가진 항목 찾기
         const bestMatch = matches.filter(item => item.similarity >= 0.1)
                                   .sort((a, b) => b.similarity - a.similarity)[0];
 
