@@ -1,46 +1,45 @@
-/* page.module.css */
 .container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  max-width: 600px;
+  margin: 0 auto;
   padding: 20px;
-  font-family: Arial, sans-serif;
+  text-align: center;
 }
 
-.header {
+.inputGroup {
   margin-bottom: 20px;
 }
 
-.content {
-  width: 100%;
-  max-width: 600px;
-}
-
 .input {
-  width: calc(100% - 20px);
-  padding: 10px;
-  margin-bottom: 10px;
-  border: 1px solid #ccc;
-  border-radius: 5px;
+  margin: 5px;
+  padding: 8px;
+  width: calc(100% - 22px);
 }
 
 .button {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 5px;
+  padding: 10px;
+  width: 100%;
   background-color: #0070f3;
   color: white;
+  border: none;
   cursor: pointer;
 }
 
-.button:hover {
-  background-color: #005bb5;
+.button:disabled {
+  background-color: #cccccc;
 }
 
-.answer {
+.error {
+  color: red;
+  margin-top: 10px;
+}
+
+.results {
+  text-align: left;
   margin-top: 20px;
-  padding: 20px;
+}
+
+.pre {
+  background-color: #f6f8fa;
+  padding: 10px;
   border: 1px solid #ccc;
-  border-radius: 5px;
-  background-color: #f9f9f9;
 }

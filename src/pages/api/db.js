@@ -1,5 +1,37 @@
-import { connectDB } from "@/utils/db";
-import stringSimilarity from 'string-similarity';
+import { connectDB } from '@/utils/db';
+import { PythonShell } from 'python-shell';
+import path from 'path';
+
+// 텍스트 전처리 함수
+function preprocessText(text) {
+    return text.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// 코사인 유사도 계산 함수
+function cosineSimilarity(vecA, vecB) {
+    const dotProduct = vecA.reduce((sum, a, idx) => sum + a * vecB[idx], 0);
+    const magnitudeA = Math.sqrt(vecA.reduce((sum, val) => sum + val * val, 0));
+    const magnitudeB = Math.sqrt(vecB.reduce((sum, val) => sum + val * val, 0));
+    return magnitudeA && magnitudeB ? dotProduct / (magnitudeA * magnitudeB) : 0;
+}
+
+// 문장 임베딩을 계산하는 함수
+function getEmbedding(text) {
+    return new Promise((resolve, reject) => {
+        const options = {
+            mode: 'text',
+            pythonOptions: ['-u'],
+            scriptPath: path.join('C:\\Users\\flymy\\OneDrive\\바탕 화면\\2tier\\nextjs2\\src\\python'),
+            args: [text],
+            pythonPath: 'C:\\Users\\flymy\\OneDrive\\바탕 화면\\2tier\\nextjs2\\env\\Scripts\\python.exe'  // Python 실행 파일 경로 지정
+        };
+        PythonShell.run('embedding.py', options, (err, results) => {
+            if (err) return reject(err);
+            const embedding = JSON.parse(results[0]);
+            resolve(embedding);
+        });
+    });
+}
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
@@ -13,61 +45,86 @@ export default async function handler(req, res) {
     }
 
     try {
-        const db = (await connectDB).db('test'); // DB 접속
-        let result = await db.collection('test').find().toArray(); // 모든 데이터 가져오기
+        const client = await connectDB;
+        const db = client.db('test');
 
-        // 유사도 계산
-        const matches = result.map(item => {
-            // 각 품명 필드가 존재하는지 확인하고 유사도 계산
-            const similarities = [
-                item.품명1 != null ? stringSimilarity.compareTwoStrings(query, item.품명1) : 0,
-                item.품명2 != null ? stringSimilarity.compareTwoStrings(query, item.품명2) : 0,
-                item.품명3 != null ? stringSimilarity.compareTwoStrings(query, item.품명3) : 0,
-                item.품명4 != null ? stringSimilarity.compareTwoStrings(query, item.품명4) : 0,
-                item.품명5 != null ? stringSimilarity.compareTwoStrings(query, item.품명5) : 0,
-                item.품명6 != null ? stringSimilarity.compareTwoStrings(query, item.품명6) : 0,
-                item.품명7 != null ? stringSimilarity.compareTwoStrings(query, item.품명7) : 0,
-                item.품명8 != null ? stringSimilarity.compareTwoStrings(query, item.품명8) : 0,
-                item.품명9 != null ? stringSimilarity.compareTwoStrings(query, item.품명9) : 0,
-                item.품명10 != null ? stringSimilarity.compareTwoStrings(query, item.품명10) : 0
-            ];
+        // master 컬렉션에서 데이터 가져오기
+        const masterCollection = db.collection('master');
+        const masterResult = await masterCollection.find().toArray();
 
-            // 가장 높은 유사도를 가진 명칭과 해당 유사도
-            const maxSimilarity = Math.max(...similarities);
-            const bestMatchName = similarities.indexOf(maxSimilarity) >= 0 
-                                  ? item[`품명${similarities.indexOf(maxSimilarity) + 1}`]
-                                  : null;
+        // test 컬렉션에서 데이터 가져오기
+        const testCollection = db.collection('test');
+        const testResult = await testCollection.find().toArray();
 
-            return {
-                ...item,
-                similarity: maxSimilarity,
-                bestMatchName: bestMatchName,
-                bestMatchIndex: similarities.indexOf(maxSimilarity) + 1 // 매칭된 품명의 인덱스 저장
-            };
-        });
+        // Query의 임베딩 벡터 계산
+        const queryEmbedding = await getEmbedding(preprocessText(query.toString()));
 
-        // 유사도가 10% 이상인 항목들 중에서 가장 높은 유사도를 가진 항목 찾기
-        const bestMatch = matches.filter(item => item.similarity >= 0.1)
-                                  .sort((a, b) => b.similarity - a.similarity)[0];
+        // master 컬렉션의 제품명 추출 및 임베딩 계산
+        const masterProductNames = masterResult
+            .map(item => item.제품명 ? preprocessText(item.제품명) : '')
+            .filter(name => name);
 
-        if (!bestMatch) {
+        const masterEmbeddings = await Promise.all(masterProductNames.map(name => getEmbedding(name)));
+        const cosineSim = masterEmbeddings.map(masterEmbedding => cosineSimilarity(queryEmbedding, masterEmbedding));
+
+        const mostSimilarIndex = cosineSim.indexOf(Math.max(...cosineSim));
+        const mostSimilarProductName = masterProductNames[mostSimilarIndex];
+        const mostSimilarMasterProduct = masterResult[mostSimilarIndex]; // 매칭된 마스터 제품
+
+        // 검색어와 직접 문자열 비교를 통한 매칭
+        let exactMatch = null;
+        for (let product of masterResult) {
+            if (product.제품명 && product.제품명.includes(query)) {
+                exactMatch = product;
+                break;
+            }
+        }
+
+        // 콘솔에 매칭된 마스터 제품 출력
+        console.log('검색어:', query);
+        console.log('매칭된 마스터 제품:', exactMatch || mostSimilarMasterProduct);
+
+        // test 컬렉션에서 유사한 제품명 찾기
+        const testProductNames = testResult
+            .map(item => item.품명1 ? preprocessText(item.품명1) : '')
+            .filter(name => name);
+
+        const testQueryEmbedding = await getEmbedding(mostSimilarProductName.toString());
+
+        const testEmbeddings = await Promise.all(testProductNames.map(name => getEmbedding(name)));
+        const testCosineSim = testEmbeddings.map(testEmbedding => cosineSimilarity(testQueryEmbedding, testEmbedding));
+
+        const mostSimilarIndexTest = testCosineSim.indexOf(Math.max(...testCosineSim));
+        const mostSimilarInprintPaperProduct = testResult[mostSimilarIndexTest];
+
+        // 콘솔에 매칭된 테스트 제품 출력
+        console.log('매칭된 테스트 제품:', mostSimilarInprintPaperProduct);
+
+        // 탄소 배출량 추출
+        const carbonEmission = mostSimilarInprintPaperProduct ? mostSimilarInprintPaperProduct.탄소배출량 : null;
+
+        if (carbonEmission === null || carbonEmission === undefined) {
             return res.status(404).json({ message: 'No matching results found' });
         }
 
-        // 품명1로 답변하도록 수정
-        const { 품명1, 탄소배출량, 기술범위, 유효시작, 유효종료, 유효지역 } = bestMatch;
-        const total탄소배출량 = 탄소배출량 * quantity;
+        const { 품명1: bestMatchName, 기술범위, 유효시작, 유효종료, 유효지역 } = mostSimilarInprintPaperProduct;
 
+        // 탄소배출량 계산
+        const total탄소배출량 = carbonEmission * quantity;
+
+        // 결과 반환
         res.status(200).json({
-            명칭: 품명1 || 'NA',
-            탄소배출량: total탄소배출량 || 'NA',
-            기술범위: 기술범위 || 'NA',
+            검색어: query,
+            매칭된마스터제품: exactMatch || mostSimilarMasterProduct,
+            매칭된제품명: bestMatchName,
+            탄소배출량: total탄소배출량,
+            기술범위,
             유효시작: 유효시작 || 'NA',
             유효종료: 유효종료 || 'NA',
-            유효지역: 유효지역 || 'NA'
+            유효지역
         });
     } catch (error) {
-        console.error(error);
+        console.error("Error:", error);
         res.status(500).json({ message: 'Internal server error' });
     }
 }
