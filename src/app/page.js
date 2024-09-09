@@ -1,5 +1,3 @@
-'use client';
-
 import { useState } from 'react';
 import axios from 'axios';
 import styles from './page.module.css';
@@ -14,8 +12,10 @@ export default function Home() {
   const handleSearch = async () => {
     setLoading(true);
     setError('');
+    // 환경 변수를 사용하여 API URL 설정
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
     try {
-      const result = await axios.post('http://localhost:8000/activities/', {
+      const result = await axios.post(`${apiUrl}/activities/`, {
         activity_name: activityName,
         region: region
       });
