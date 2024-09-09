@@ -12,7 +12,8 @@ export default function Home() {
   const handleSearch = async () => {
     setLoading(true);
     setError('');
-    const apiUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000'; // 환경 변수 사용
+    // 환경 변수를 사용하여 API URL 설정
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
     try {
       const result = await axios.post(`${apiUrl}/activities/`, {
         activity_name: activityName,
